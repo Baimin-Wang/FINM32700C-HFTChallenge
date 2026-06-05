@@ -1,0 +1,179 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780631731033,
+  "projectRoot": "/home/nrts/src/FINM32700C-HFTChallenge",
+  "techStack": {
+    "languages": [
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "CMakeLists.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "HFTDashboard": {
+      "path": "HFTDashboard",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1780631731026,
+      "keyFiles": [
+        "hftdashboard.py",
+        "hftdashboard_advanced.py"
+      ]
+    },
+    "build": {
+      "path": "build",
+      "purpose": "Build output",
+      "fileCount": 3,
+      "lastAccessed": 1780631731027,
+      "keyFiles": [
+        "CMakeCache.txt",
+        "Makefile",
+        "cmake_install.cmake"
+      ]
+    },
+    "hftclient2026": {
+      "path": "hftclient2026",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1780631731030,
+      "keyFiles": [
+        "CMakeLists.txt",
+        "hftclient2026",
+        "main.cpp"
+      ]
+    },
+    "hftserver2026": {
+      "path": "hftserver2026",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1780631731030,
+      "keyFiles": [
+        "CMakeLists.txt",
+        "hftserver2026",
+        "main.cpp"
+      ]
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1780631731031,
+      "keyFiles": [
+        "CMakeLists.txt",
+        "blast_server.cpp",
+        "client_concurrent.cpp"
+      ]
+    },
+    "build/bin": {
+      "path": "build/bin",
+      "purpose": "Executable scripts",
+      "fileCount": 4,
+      "lastAccessed": 1780631731031,
+      "keyFiles": [
+        "blast_server",
+        "hftclient2026",
+        "hftclient_concurrent"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "hftclient2026/main.cpp",
+      "accessCount": 8,
+      "lastAccessed": 1780633497293,
+      "type": "file"
+    },
+    {
+      "path": "tools/client_concurrent.cpp",
+      "accessCount": 4,
+      "lastAccessed": 1780632529125,
+      "type": "file"
+    },
+    {
+      "path": "HFTDashboard/hftdashboard.py",
+      "accessCount": 4,
+      "lastAccessed": 1780634285984,
+      "type": "file"
+    },
+    {
+      "path": "hftclient2026/CMakeLists.txt",
+      "accessCount": 3,
+      "lastAccessed": 1780632587614,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 2,
+      "lastAccessed": 1780634659417,
+      "type": "file"
+    },
+    {
+      "path": "hftserver2026/main.cpp",
+      "accessCount": 1,
+      "lastAccessed": 1780631804830,
+      "type": "file"
+    },
+    {
+      "path": "structure.md",
+      "accessCount": 1,
+      "lastAccessed": 1780631804920,
+      "type": "file"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "accessCount": 1,
+      "lastAccessed": 1780631808784,
+      "type": "file"
+    },
+    {
+      "path": "tools/blast_server.cpp",
+      "accessCount": 1,
+      "lastAccessed": 1780631809599,
+      "type": "file"
+    },
+    {
+      "path": "start_all_clients.sh",
+      "accessCount": 1,
+      "lastAccessed": 1780631830751,
+      "type": "file"
+    },
+    {
+      "path": "tools/CMakeLists.txt",
+      "accessCount": 1,
+      "lastAccessed": 1780631830992,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

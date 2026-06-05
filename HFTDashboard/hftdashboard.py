@@ -8,7 +8,7 @@ import plotly.graph_objs as go
 import numpy as np
 
 # Specify the absolute path to your results file.
-RESULTS_FILE = "/Users/sdonadio/CLionProjects/HFTProject/build/results.json"
+RESULTS_FILE = "/tmp/results.json"
 
 # Create a Flask server instance.
 server = Flask(__name__)
@@ -173,4 +173,4 @@ def update_dashboard(n_intervals):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)

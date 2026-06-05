@@ -1,9 +1,15 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <queue>
+#include <condition_variable>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 
@@ -11,51 +17,79 @@ using namespace std;
 
 static constexpr int MODULO = 997;
 
-int computeChecksumFast(const vector<int>& nums, int challengeStart, int N) {
-    int matrixValues = N * N;
-    int aStart = challengeStart + 2;
-    int bStart = aStart + matrixValues;
+struct Challenge {
+    int id;
+    int N;
+    vector<int> data; // flat: A[N*N] then B[N*N]
+};
 
+static mutex qMutex;
+static condition_variable qCV;
+static queue<Challenge> workQueue;
+static atomic<bool> shuttingDown{false};
+
+static mutex sendMutex;
+
+static int computeChecksumFast(const vector<int>& data, int N) {
     vector<int> colSumA(N, 0);
     vector<int> rowSumB(N, 0);
-
-    for (int i = 0; i < N; ++i) {
-        int rowBase = i * N;
-
-        for (int j = 0; j < N; ++j) {
-            colSumA[j] = (colSumA[j] + nums[aStart + rowBase + j]) % MODULO;
-            rowSumB[i] = (rowSumB[i] + nums[bStart + rowBase + j]) % MODULO;
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++) {
+            colSumA[j] = (colSumA[j] + data[i * N + j]) % MODULO;
+            rowSumB[i] = (rowSumB[i] + data[N * N + i * N + j]) % MODULO;
         }
-    }
-
     int checksum = 0;
-    for (int k = 0; k < N; ++k) {
+    for (int k = 0; k < N; k++)
         checksum = (checksum + colSumA[k] * rowSumB[k]) % MODULO;
-    }
-
     return checksum;
 }
 
-bool sendAll(int sock, const string& msg) {
-    const char* data = msg.data();
-    size_t sentTotal = 0;
-
-    while (sentTotal < msg.size()) {
-        ssize_t sent = send(sock, data + sentTotal, msg.size() - sentTotal, 0);
-        if (sent <= 0) {
-            return false;
-        }
-        sentTotal += (size_t)sent;
+static bool sendAll(int sock, const char* p, size_t left) {
+    while (left > 0) {
+        ssize_t n = send(sock, p, left, 0);
+        if (n <= 0) return false;
+        p += n;
+        left -= n;
     }
-
     return true;
 }
 
-void parseIncomingInts(const char* buffer, int n, vector<int>& nums, int& currentValue, bool& readingNumber) {
-    // Streaming parser: the current number can continue across recv calls.
+static void workerThread(int sock) {
+    while (true) {
+        Challenge ch;
+        {
+            unique_lock<mutex> lock(qMutex);
+            qCV.wait(lock, [] { return !workQueue.empty() || shuttingDown.load(); });
+            if (workQueue.empty()) return;
+            ch = std::move(workQueue.front());
+            workQueue.pop();
+        }
+
+        auto computeStart = chrono::high_resolution_clock::now();
+        int answer = computeChecksumFast(ch.data, ch.N);
+        auto computeUs = chrono::duration_cast<chrono::microseconds>(
+            chrono::high_resolution_clock::now() - computeStart).count();
+
+        char reply[32];
+        int replyLen = snprintf(reply, sizeof(reply), "%d %d\n", ch.id, answer);
+
+        auto sendStart = chrono::high_resolution_clock::now();
+        {
+            lock_guard<mutex> lock(sendMutex);
+            sendAll(sock, reply, (size_t)replyLen);
+        }
+        auto sendUs = chrono::duration_cast<chrono::microseconds>(
+            chrono::high_resolution_clock::now() - sendStart).count();
+
+        cout << "Answered challenge " << ch.id << " with " << answer
+             << " (compute " << computeUs << " us, send " << sendUs << " us)\n";
+    }
+}
+
+static void parseIncomingInts(const char* buffer, int n, vector<int>& nums,
+                               int& currentValue, bool& readingNumber) {
     for (int i = 0; i < n; ++i) {
         unsigned char ch = (unsigned char)buffer[i];
-
         if (isdigit(ch)) {
             currentValue = currentValue * 10 + (ch - '0');
             readingNumber = true;
@@ -74,22 +108,18 @@ int main(int argc, char** argv) {
     }
 
     string host = argv[1];
-    int port = stoi(argv[2]);
+    int port    = stoi(argv[2]);
     string team = argv[3];
 
     cout << "HFT Client\n";
     cout << "Solving matrix checksum challenges.\n\n";
 
-    // --- Connect to server ---
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("socket");
-        return 1;
-    }
+    if (sock < 0) { perror("socket"); return 1; }
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
+    addr.sin_port   = htons(port);
     inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
 
     if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
@@ -97,77 +127,60 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Send team name
+    int flag = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
     string intro = team + "\n";
     send(sock, intro.c_str(), intro.size(), 0);
 
-    cout << "Connected to server at " << host << ":" << port << "\n";
+    int nThreads = (int)max(2u, thread::hardware_concurrency());
+    cout << "Connected to " << host << ":" << port
+         << " | threads=" << nThreads << "\n";
     cout << "Waiting for challenges...\n";
+
+    vector<thread> workers;
+    for (int i = 0; i < nThreads; i++)
+        workers.emplace_back(workerThread, sock);
 
     char buffer[65536];
     vector<int> nums;
-    size_t numStart = 0;
-    int currentValue = 0;
+    size_t numStart    = 0;
+    int currentValue   = 0;
     bool readingNumber = false;
-    long long parseUsSinceLastAnswer = 0;
 
     while (true) {
-        int n = recv(sock, buffer, sizeof(buffer), 0);          // returns the length of the prompt for each question, every time it will overwrite the buffer and returns n as the length.
+        int n = recv(sock, buffer, sizeof(buffer), 0);
         if (n <= 0) {
             cout << "Disconnected from server.\n";
             break;
         }
 
-        auto parseStart = chrono::high_resolution_clock::now();
-        // parses from the buffer, loading numbers into nums. Automatically skips over anything that's not digits
         parseIncomingInts(buffer, n, nums, currentValue, readingNumber);
-        auto parseEnd = chrono::high_resolution_clock::now();
-        parseUsSinceLastAnswer += chrono::duration_cast<chrono::microseconds>(parseEnd - parseStart).count();
 
-        // So there's something to compute
         while (nums.size() - numStart >= 2) {
-            // the first number after process is the challenge ID
             int challengeId = nums[numStart];
-            // size as the second
-            int N = nums[numStart + 1];
-
-            int valuesNeeded = 2 + 2 * N * N;
+            int N           = nums[numStart + 1];
 
             if (N <= 0) {
                 cerr << "Invalid matrix size: " << N << "\n";
-                close(sock);
-                return 1;
+                goto cleanup;
             }
 
-            // size needed = 1 (ID) + 1 (N) + N * N  + N * N
-            if (nums.size() - numStart < (size_t)valuesNeeded) {
-                break;
+            size_t valuesNeeded = 2 + 2 * (size_t)N * N;
+            if (nums.size() - numStart < valuesNeeded) break;
+
+            {
+                Challenge ch;
+                ch.id = challengeId;
+                ch.N  = N;
+                ch.data.assign(nums.begin() + numStart + 2,
+                               nums.begin() + numStart + valuesNeeded);
+                lock_guard<mutex> lock(qMutex);
+                workQueue.push(std::move(ch));
+                qCV.notify_one();
             }
 
-            auto computeStart = chrono::high_resolution_clock::now();
-            int answer = computeChecksumFast(nums, (int)numStart, N);
-            auto computeEnd = chrono::high_resolution_clock::now();
-            auto computeUs = chrono::duration_cast<chrono::microseconds>(computeEnd - computeStart).count();
-
-            string reply = to_string(challengeId) + " " + to_string(answer) + "\n";
-
-            auto sendStart = chrono::high_resolution_clock::now();
-            if (!sendAll(sock, reply)) {
-                cerr << "Failed to send answer.\n";
-                close(sock);
-                return 1;
-            }
-            auto sendEnd = chrono::high_resolution_clock::now();
-            auto sendUs = chrono::duration_cast<chrono::microseconds>(sendEnd - sendStart).count();
-
-            cout << "Answered challenge " << challengeId << " with " << answer
-                 << " (parse " << parseUsSinceLastAnswer
-                 << " us, compute " << computeUs
-                 << " us, send " << sendUs << " us)\n";
-            parseUsSinceLastAnswer = 0;
             numStart += valuesNeeded;
-
-            // Compact occasionally instead of moving memory after every challenge.
             if (numStart > 100000) {
                 nums.erase(nums.begin(), nums.begin() + numStart);
                 numStart = 0;
@@ -175,6 +188,10 @@ int main(int argc, char** argv) {
         }
     }
 
+cleanup:
+    shuttingDown = true;
+    qCV.notify_all();
+    for (auto& w : workers) w.join();
     close(sock);
     return 0;
 }
